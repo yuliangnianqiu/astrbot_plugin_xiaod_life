@@ -1,43 +1,42 @@
-# V0.1 验证记录
+# V0.2 测试报告
 
-执行日期：2026-11-03（UTC）。执行环境：云端 Python 3.12，未操作用户电脑。
+执行日期：2026-11-03。基线为 V0.1 修正版 commit `7fca296fc8075480f5b6eaf743b0c06bbf77e486`。测试环境 Python 3.12，使用临时隔离目录安装测试依赖；未使用用户 API Key，未访问真实 QQ/模型服务或真实 Tavily 账户。
 
-## 已执行
+## 执行结果
 
-- `python -m unittest discover -s tests -v`：**41 项测试通过**（另外含 URL 安全 subtests）。
+- `python -m unittest discover -s tests -v`：78 tests，全部通过。
+- `python -m pytest -q`：78 passed，19 subtests passed。环境自带 anyio pytest 插件产生 1 条 pytest CallSpec 弃用警告，不是插件运行警告。
 - `python -m ruff check .`：通过。
-- `python -m ruff format --check .`：通过。
+- `python -m ruff format --check .`：15 Python 文件均已格式化。
 - `python -m compileall -q .`：通过。
-- `_conf_schema.json` 可解析为 JSON，配置字段与实现一致。
-- 对照 AstrBot v4.29.4 官方源码核对 Context、Star、StarTools、命令组与配置 API。
+- `_conf_schema.json` 经过 JSON 解析验证。保留原 41 条 V0.1 测试，新增 37 条独立测试方法；参数化兴趣/URL等场景另以 subtest 执行。
 
-离线测试使用模型/HTTP/AstrBot API 测试替身，并非真实 QQ、DeepSeek 或完整 AstrBot 启动测试。测试数据为临时文件，不会当成小D的真实经历发版。
+## 新增覆盖
 
-覆盖成功闭环、错误日志保留、无匹配、非法 JSON、伪造来源编号、来源上限、损坏日志保护、并发拒绝、冷却、取消保存、敏感错误信息不泄漏、RSS/Atom、HTML清理、XML实体防护、私网URL与DNS、请求重定向/响应字节限制、默认权限、provider调用参数、卸载取消、today不调用模型、归档保留、持久化线程取消安全、消息分段与生成URL/CQ拒绝。
+1. Tavily 成功响应解析，真实原始 URL/标题/摘要/检索时间；最多 3 个来源、去重、空摘要与不安全 URL 过滤。
+2. 固定 endpoint、basic/general 参数、禁用自动参数/答案/正文、Bearer 认证、禁止重定向；响应大小限制、超时、非法 JSON、HTTP 失败、缺 Key、异常脱敏、取消传播、显式 RSS 模式。
+3. 音乐、电影、文学、美食、艺术、自然、科技各自进入检索流程；选题输入包含旧日志下一方向；已有兴趣文件额外字段保留。
+4. 北京时间 15:00 边界、UTC 转换、过点启动补当天、不补昨日、禁用开关、配置时分、拒绝无时区时钟。
+5. O_EXCL 同日持久占位，20 线程竞争仅一个成功；新 Store/Explorer 重建去重；失败/取消后同日不重试；残缺 claim 不覆盖；手动与自动独立日期额度但共享引擎。
+6. 后台显式 provider_id、无 QQ 事件、无需 current-chat resolver；手动仍可回退会话模型；上下文为空、tools=None，无主动消息接口。
+7. initialize/terminate 取消与资源关闭、并发 initialize 只启动一个任务、初始化与 terminate 竞争、关闭后不重新启动；busy/cooldown 后继续检查、当日完成后停止重复调用。
+8. 旧日志稀疏字段兼容、旧文件字节保护、已有并发/冷却/取消/损坏存储/原子写入/RSS/XML/URL/DNS/模型引用安全及 yield 传播测试全部保留。
 
-## 实际外网冒烟
+## 独立审核
 
-通过插件真实 `RSSClient.fetch` 尝试下列三个默认源：
+独立审核新增 `test_adapter_review.py` 与 `test_scheduler_review.py`。审核发现并发 initialize 可能遗失后台任务，已增加生命周期锁，使初始化与终止串行化；确定性复现测试修复后通过。未发现遗留阻断问题。
 
-- `https://www.sciencedaily.com/rss/all.xml`
-- `https://www.nasa.gov/feed/`
-- `https://www.technologyreview.com/feed/`
+## 官方源码核查
 
-三者在当前云执行环境均报 `ClientConnectorDNSError`，底层为 `Temporary failure in name resolution`。**本轮没有成功取得真实 RSS 响应**。这不能用于判断部署环境中这些 RSS 可用或不可用，也不能算真实网络探索闭环已验收。没有通过关闭TLS、放开内网或代理绕过该限制。
+核查 AstrBot v4.29.4，commit `61335414433db721b3f7ecc93f90deafe0a59d78`：
 
-## 尚未验收
+- [Context.llm_generate](https://github.com/AstrBotDevs/AstrBot/blob/v4.29.4/astrbot/core/star/context.py#L184-L231)：后台使用 keyword `chat_provider_id`，不依赖 event；手动使用 `get_current_chat_provider_id(umo=...)`。
+- [网页搜索工具](https://github.com/AstrBotDevs/AstrBot/blob/v4.29.4/astrbot/core/tools/web_search_tools.py)：聊天工具依赖 AgentContext/event，私有 `_tavily_search` 不作为稳定插件接口。实现独立配置的 Tavily HTTP 适配器，无私有调用。
+- [生命周期](https://github.com/AstrBotDevs/AstrBot/blob/v4.29.4/astrbot/core/star/star_manager.py#L1932-L1966)：直接实现 initialize/terminate，不定义可能抢先触发的自定义 __del__。
+- [Tavily API](https://docs.tavily.com/documentation/api-reference/endpoint/search)：请求与响应契约以官方文档核查；离线 HTTP double 验证，不等于真实账户网络验收。
 
-1. 真正安装到 AstrBot v4.29.4 后的模块加载、配置页与命令匹配。
-2. 用户已配置 DeepSeek 的真实调用、结构化输出稳定性、费用及响应时间。
-3. 部署网络中的 RSS 连通性与真实内容匹配。
-4. QQ 私聊/群聊的管理员身份、命令唤醒、平台消息分段/URL风控。
-5. 同时启用 LivingMemory 与 Proactive Chat 时的端到端共存行为。
-6. AstrBot 重载/卸载/进程重启情况下的真实持久化验收。
+## 未完成的真实部署验收
 
-GitHub Actions 工作流已提供；远端运行结果以仓库实际 Checks 为准，本文件不预先宣称 CI 成功。
+未在用户的 2 CPU / 2 GB 服务器、AstrBot/QQ/DeepSeek 实例安装运行，也未调用付费搜索。因此不能宣称已完成真实端到端、内存峰值或性能验收。仍需验证插件安装/配置 UI、provider ID、真实 API Key 与额度、部署网络、QQ 指令结果、定时时刻无人发消息触发、同日重载去重、卸载无遗留任务，以及与 LivingMemory/Proactive Chat 共存。代码不读写这些插件，不做普通聊天注入、不主动分享。
 
-## 指令回复顺序回归
-
-对照 v4.29.4 的 `pipeline/scheduler.py`、`process_stage/stage.py` 和 `astr_message_event.py`，修复了在 yield 之前 stop_event 导致后续分段中断、清理延迟的风险。当前所有回应先完成 yield，最后再停止事件。新增七项逐次 yield 状态测试，覆盖拒绝、停用、未就绪、探索多段/异常、摘要多段/异常。它们验证适配器边界，不代替完整 QQ 流水线验收。
-
-另执行独立探针，从 AstrBot v4.29.4 官方原文件提取未改写的 `_process_stages` 与 `call_handler` 函数 AST，运行当前插件真实 explore 生成器（外围模型/事件使用替身）。旧顺序得到 delivered_parts=1、running_tasks=1；修复顺序得到 delivered_parts=3、running_tasks=0，三段全文、立即清理和停止状态断言全部通过。该探针是上游调度函数契约验证，仍不是完整 AstrBot/QQ 实机验收。
+硬崩溃时可能仅保留每日占位而无完成活动；这是“每日最多一次尝试”的明确设计，不承诺 exactly-once 成功。多个 AstrBot 进程不应共用活动目录；日占位跨进程互斥不等于活动文件支持多进程写入。

@@ -1,7 +1,61 @@
 {
-  "enabled": {"description": "启用小D探索与活动指令", "type": "bool", "default": true},
-  "search_sources": {"description": "公开 HTTPS RSS/Atom 地址（1-3个；不跟随重定向）", "type": "list", "default": ["https://www.sciencedaily.com/rss/all.xml", "https://www.nasa.gov/feed/", "https://www.technologyreview.com/feed/"]},
-  "provider_id": {"description": "AstrBot 已配置的 DeepSeek 提供商 ID；留空使用当前会话模型", "type": "string", "default": "", "_special": "select_provider"},
-  "max_sources": {"description": "单次最大来源数（1-3，硬上限3）", "type": "int", "default": 3},
-  "admin_only": {"description": "仅允许 AstrBot 管理员使用指令（推荐；关闭后所有用户共享小D日志）", "type": "bool", "default": true}
+  "enabled": {
+    "description": "启用小D探索与活动指令",
+    "type": "bool",
+    "default": true
+  },
+  "search_sources": {
+    "description": "公开 HTTPS RSS/Atom 地址（1-3个；不跟随重定向）",
+    "type": "list",
+    "default": [
+      "https://www.sciencedaily.com/rss/all.xml",
+      "https://www.nasa.gov/feed/",
+      "https://www.technologyreview.com/feed/"
+    ]
+  },
+  "provider_id": {
+    "description": "AstrBot 模型提供商 ID：自动探索必须配置；仅手动探索可留空使用当前会话模型",
+    "type": "string",
+    "default": "",
+    "_special": "select_provider"
+  },
+  "max_sources": {
+    "description": "单次最大来源数（1-3，硬上限3）",
+    "type": "int",
+    "default": 3
+  },
+  "admin_only": {
+    "description": "仅允许 AstrBot 管理员使用指令（推荐；关闭后所有用户共享小D日志）",
+    "type": "bool",
+    "default": true
+  },
+  "search_mode": {
+    "description": "搜索方式：tavily 通用网页搜索；rss 保留 V0.1 RSS 模式（不自动回退）",
+    "type": "string",
+    "default": "tavily",
+    "options": [
+      "tavily",
+      "rss"
+    ]
+  },
+  "tavily_api_key": {
+    "description": "Tavily API Key（可能产生 API 费用；仅发送至 api.tavily.com；不要公开配置文件）",
+    "type": "string",
+    "default": ""
+  },
+  "auto_enabled": {
+    "description": "启用每日后台探索；只保存日志，不主动发送 QQ 消息。每天最多一次尝试，失败或中断当天也不重试",
+    "type": "bool",
+    "default": true
+  },
+  "auto_hour": {
+    "description": "每日探索小时（Asia/Shanghai 北京时间，0-23；改配置后重载插件）",
+    "type": "int",
+    "default": 15
+  },
+  "auto_minute": {
+    "description": "每日探索分钟（Asia/Shanghai 北京时间，0-59）",
+    "type": "int",
+    "default": 0
+  }
 }

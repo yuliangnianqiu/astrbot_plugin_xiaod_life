@@ -1,7 +1,7 @@
 name: astrbot_plugin_xiaod_life
 display_name: 小D 的探索生活
-desc: 手动探索公开 RSS，为小D保存有真实来源的活动与主观感想。
-version: "0.1.0"
+desc: 通用网页搜索与每日北京时间自动探索，保存真实来源及独立活动日志。
+version: "0.2.0"
 author: npu2023300480dbl
 repo: https://github.com/npu2023300480dbl/astrbot_plugin_xiaod_life
 astrbot_version: ">=4.29.4,<5"
