@@ -1,0 +1,7 @@
+{
+  "enabled": {"description": "启用小D探索与活动指令", "type": "bool", "default": true},
+  "search_sources": {"description": "公开 HTTPS RSS/Atom 地址（1-3个；不跟随重定向）", "type": "list", "default": ["https://www.sciencedaily.com/rss/all.xml", "https://www.nasa.gov/feed/", "https://www.technologyreview.com/feed/"]},
+  "provider_id": {"description": "AstrBot 已配置的 DeepSeek 提供商 ID；留空使用当前会话模型", "type": "string", "default": "", "_special": "select_provider"},
+  "max_sources": {"description": "单次最大来源数（1-3，硬上限3）", "type": "int", "default": 3},
+  "admin_only": {"description": "仅允许 AstrBot 管理员使用指令（推荐；关闭后所有用户共享小D日志）", "type": "bool", "default": true}
+}
