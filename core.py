@@ -114,7 +114,7 @@ class Explorer:
         self.max_sources = max(1, min(3, int(max_sources)))
         self.feeds = list(feeds if feeds is not None else DEFAULT_FEEDS)[:3]
         self.lock = asyncio.Lock()
-        self.last_started = 0.0
+        self.last_started = None
 
     async def run(self, llm=None):
         llm = llm or self.llm
@@ -122,7 +122,7 @@ class Explorer:
             return None, "已有探索正在进行，请稍后查看。"
         async with self.lock:
             loop = asyncio.get_running_loop()
-            if loop.time() - self.last_started < 30:
+            if self.last_started is not None and loop.time() - self.last_started < 30:
                 return None, "请间隔 30 秒再探索，避免重复调用模型。"
             self.last_started = loop.time()
             # Load before modifying anything. A corrupt history is preserved as-is.

@@ -119,7 +119,7 @@ class CoreTests(unittest.IsolatedAsyncioTestCase):
             await asyncio.Event().wait()
 
         task = asyncio.create_task(self.engine.run(wait_forever))
-        await started.wait()
+        await asyncio.wait_for(started.wait(), timeout=2)
         task.cancel()
         with self.assertRaises(asyncio.CancelledError):
             await task
