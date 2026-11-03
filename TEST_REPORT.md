@@ -1,42 +1,52 @@
-# V0.2 测试报告
+# V0.3 测试报告
 
-执行日期：2026-11-03。基线为 V0.1 修正版 commit `7fca296fc8075480f5b6eaf743b0c06bbf77e486`。测试环境 Python 3.12，使用临时隔离目录安装测试依赖；未使用用户 API Key，未访问真实 QQ/模型服务或真实 Tavily 账户。
+执行日期：2026-11-03。基线 V0.2 commit `ecfcf61`。Python 3.12，测试依赖隔离安装到临时目录。未使用用户 API Key，未调用真实 Tavily / DeepSeek / QQ 服务，未宣称完成真实部署验收。
 
 ## 执行结果
 
-- `python -m unittest discover -s tests -v`：78 tests，全部通过。
-- `python -m pytest -q`：78 passed，19 subtests passed。环境自带 anyio pytest 插件产生 1 条 pytest CallSpec 弃用警告，不是插件运行警告。
+- `python -m unittest discover -s tests -q`：112 tests 全部通过。
+- `python -m pytest -q`：112 passed，24 subtests passed。宿主 anyio pytest 插件产生 1 条 pytest CallSpec 弃用警告，非本插件运行错误。
 - `python -m ruff check .`：通过。
-- `python -m ruff format --check .`：15 Python 文件均已格式化。
+- `python -m ruff format --check .`：18 Python 文件通过。
 - `python -m compileall -q .`：通过。
-- `_conf_schema.json` 经过 JSON 解析验证。保留原 41 条 V0.1 测试，新增 37 条独立测试方法；参数化兴趣/URL等场景另以 subtest 执行。
+- `_conf_schema.json` JSON 解析与 `git diff --check`：通过。
+- 原 78 项 V0.1/V0.2 测试全部保留，本轮新增 34 项方法测试与 5 个预算上限 subtests。
 
-## 新增覆盖
+测试命令使用 `PYTHONPATH=/tmp/life-review-deps:.` 加载临时测试依赖；生产依赖仍为 requirements.txt，不引入数据库、浏览器或本地模型。
 
-1. Tavily 成功响应解析，真实原始 URL/标题/摘要/检索时间；最多 3 个来源、去重、空摘要与不安全 URL 过滤。
-2. 固定 endpoint、basic/general 参数、禁用自动参数/答案/正文、Bearer 认证、禁止重定向；响应大小限制、超时、非法 JSON、HTTP 失败、缺 Key、异常脱敏、取消传播、显式 RSS 模式。
-3. 音乐、电影、文学、美食、艺术、自然、科技各自进入检索流程；选题输入包含旧日志下一方向；已有兴趣文件额外字段保留。
-4. 北京时间 15:00 边界、UTC 转换、过点启动补当天、不补昨日、禁用开关、配置时分、拒绝无时区时钟。
-5. O_EXCL 同日持久占位，20 线程竞争仅一个成功；新 Store/Explorer 重建去重；失败/取消后同日不重试；残缺 claim 不覆盖；手动与自动独立日期额度但共享引擎。
-6. 后台显式 provider_id、无 QQ 事件、无需 current-chat resolver；手动仍可回退会话模型；上下文为空、tools=None，无主动消息接口。
-7. initialize/terminate 取消与资源关闭、并发 initialize 只启动一个任务、初始化与 terminate 竞争、关闭后不重新启动；busy/cooldown 后继续检查、当日完成后停止重复调用。
-8. 旧日志稀疏字段兼容、旧文件字节保护、已有并发/冷却/取消/损坏存储/原子写入/RSS/XML/URL/DNS/模型引用安全及 yield 传播测试全部保留。
+## V0.3 新增覆盖
 
-## 独立审核
+1. 模型自主 discovery / active_search 切换；发现候选交错混合 RSS 与两组不同查询、去重，RSS 不要求旧兴趣命中。
+2. 模型只选候选 ID，拒绝超范围、重复、布尔 ID；零选择保存 skipped，不伪造阅读；最多两条选中材料。
+3. 平台识别与小红书、B站、知乎域名过滤；过滤恶意相似后缀与不安全 URL；原链接保留。
+4. Tavily Extract 固定 endpoint、basic/text、有界 timeout、同一 Bearer Key、无重定向；批量最多两页；正文长度及512KiB响应限制。
+5. 正文提取成功与部分失败、空正文、异常回退；结果 URL 必须与请求完全匹配，非选中页面不能成为正文；mixed/summary/full_text 日志区分。
+6. 私网字面量 URL 不上传 Extract；模型与网络错误不保存秘密异常；取消向上传播；无隐式重试。
+7. 脱敏必须在完整文本清理/HTML实体归一化之后、最终截断之前，避免密钥前缀边界泄漏。
+8. 2次搜索、2网页、3次模型默认预算与配置硬顶；失败计入尝试；低于完整模型预算会停止，不先做无法阅读的额外提取；关闭Extract仍可摘要阅读。
+9. 每日V0.3记录持久化、重建Explorer/Store后日期去重；原定时、同日失败不重试、卸载、并发、冷却、原子写和旧记录测试继续通过。
+10. AstrBot适配器生产路径确实启用V0.3；非法预算或域名配置在HTTP session启动前拒绝。与LivingMemory/Proactive Chat的隔离、空contexts、tools=None、后台无QQ事件及无主动消息测试继续通过。
 
-独立审核新增 `test_adapter_review.py` 与 `test_scheduler_review.py`。审核发现并发 initialize 可能遗失后台任务，已增加生命周期锁，使初始化与终止串行化；确定性复现测试修复后通过。未发现遗留阻断问题。
+## 独立审查与修复
 
-## 官方源码核查
+独立审查新增 `tests/test_v03_security.py` 15项测试，发现并修复两处问题：
 
-核查 AstrBot v4.29.4，commit `61335414433db721b3f7ecc93f90deafe0a59d78`：
+- 原“截断后脱敏”可能留下密钥前缀，改为有界响应内完整归一化、脱敏再截断，含HTML实体测试。
+- 初始化预算校验原先晚于session创建，改为先校验/构造引擎再连接，连接初始化失败或取消时关闭资源。
 
-- [Context.llm_generate](https://github.com/AstrBotDevs/AstrBot/blob/v4.29.4/astrbot/core/star/context.py#L184-L231)：后台使用 keyword `chat_provider_id`，不依赖 event；手动使用 `get_current_chat_provider_id(umo=...)`。
-- [网页搜索工具](https://github.com/AstrBotDevs/AstrBot/blob/v4.29.4/astrbot/core/tools/web_search_tools.py)：聊天工具依赖 AgentContext/event，私有 `_tavily_search` 不作为稳定插件接口。实现独立配置的 Tavily HTTP 适配器，无私有调用。
-- [生命周期](https://github.com/AstrBotDevs/AstrBot/blob/v4.29.4/astrbot/core/star/star_manager.py#L1932-L1966)：直接实现 initialize/terminate，不定义可能抢先触发的自定义 __del__。
-- [Tavily API](https://docs.tavily.com/documentation/api-reference/endpoint/search)：请求与响应契约以官方文档核查；离线 HTTP double 验证，不等于真实账户网络验收。
+最终独立审查没有剩余阻断项。保留旧Explorer构造接口供旧调用方使用；生产适配器始终显式注入 discovery/extract 进入V0.3三阶段流程。
 
-## 未完成的真实部署验收
+## 官方接口依据与边界
 
-未在用户的 2 CPU / 2 GB 服务器、AstrBot/QQ/DeepSeek 实例安装运行，也未调用付费搜索。因此不能宣称已完成真实端到端、内存峰值或性能验收。仍需验证插件安装/配置 UI、provider ID、真实 API Key 与额度、部署网络、QQ 指令结果、定时时刻无人发消息触发、同日重载去重、卸载无遗留任务，以及与 LivingMemory/Proactive Chat 共存。代码不读写这些插件，不做普通聊天注入、不主动分享。
+- [Tavily Search](https://docs.tavily.com/documentation/api-reference/endpoint/search)
+- [Tavily Extract](https://docs.tavily.com/documentation/api-reference/endpoint/extract)
+- [Tavily credits](https://docs.tavily.com/documentation/api-credits)
+- AstrBot沿用V0.2已核对的v4.29.4公开 `Context.llm_generate`、`StarTools.get_data_dir`、initialize/terminate生命周期，不引入新的私有接口调用。
 
-硬崩溃时可能仅保留每日占位而无完成活动；这是“每日最多一次尝试”的明确设计，不承诺 exactly-once 成功。多个 AstrBot 进程不应共用活动目录；日占位跨进程互斥不等于活动文件支持多进程写入。
+离线测试验证请求契约和逻辑，不证明第三方当前可访问某一页面。Extract抓取由Tavily执行，本地DNS防护不覆盖其远端DNS和跳转链。仅精确返回URL被认定为所选正文；canonical URL变化会保守降级。full_text指实际提取且可能截断的正文，不代表整页、图片、视频或原文事实独立核验。
+
+`usage`是本插件预留尝试次数，不是供应商实际计费。LLM预算约束本插件调用官方方法次数，供应商内部重试不在本插件控制内。
+
+## 真实部署仍需验收
+
+用户2 CPU / 2 GB服务器、AstrBot/QQ/DeepSeek实例未在本轮运行，无性能压测或真实端到端通过声明。按README末尾清单完成：真实Key与provider配置、发现模式候选多样性、至少一篇公开网页实际full_text、内容概括有据、API配额、平台摘要降级、QQ命令与权限、重载持久化、无QQ消息自动触发及同日去重、卸载清理，以及LivingMemory/Proactive Chat共存。

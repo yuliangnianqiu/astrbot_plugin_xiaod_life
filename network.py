@@ -159,3 +159,28 @@ class RSSClient:
                     candidates.append((score, entry))
         candidates.sort(key=lambda pair: pair[0], reverse=True)
         return [entry for _, entry in candidates[:maximum]], errors
+
+    async def discover(self, feeds, maximum):
+        """Round-robin across feeds so one prolific source cannot fill the pool."""
+        maximum = min(12, max(0, int(maximum)))
+        if not maximum:
+            return [], []
+        feeds = list(dict.fromkeys(feeds))[:MAX_FEEDS]
+        results = await asyncio.gather(*(self.fetch(url) for url in feeds), return_exceptions=True)
+        pools, errors = [], []
+        for url, result in zip(feeds, results):
+            if isinstance(result, BaseException):
+                errors.append({"feed_url": url, "error_type": type(result).__name__})
+            else:
+                pools.append(result[:MAX_ENTRIES])
+        candidates, seen = [], set()
+        for index in range(MAX_ENTRIES):
+            for pool in pools:
+                if index >= len(pool) or pool[index]["url"] in seen:
+                    continue
+                entry = pool[index]
+                seen.add(entry["url"])
+                candidates.append(entry)
+                if len(candidates) >= maximum:
+                    return candidates, errors
+        return candidates, errors

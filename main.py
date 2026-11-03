@@ -1,4 +1,4 @@
-"""AstrBot V0.2 adapter. Never accesses other plugins' storage or sends proactive chat."""
+"""AstrBot V0.3 adapter. Never accesses other plugins' storage or sends proactive chat."""
 
 import asyncio
 
@@ -9,7 +9,7 @@ from astrbot.api.star import Context, Star, StarTools
 from .core import DEFAULT_FEEDS, Explorer, Store, format_recent, format_record, message_chunks
 from .network import public_url
 from .scheduler import DailyScheduler
-from .search import SearchClient
+from .search import SearchClient, validated_domains
 
 
 class XiaodLife(Star):
@@ -55,8 +55,29 @@ class XiaodLife(Star):
             hour=self.config.get("auto_hour", 15),
             minute=self.config.get("auto_minute", 0),
         )
-        await self.client.start()
-        self.engine = Explorer(self.store, self.client.search, None, maximum, feeds)
+        domains = validated_domains(self.config.get("include_domains", []))
+        engine = Explorer(
+            self.store,
+            self.client.search,
+            None,
+            maximum,
+            feeds,
+            extract=self.client.extract,
+            discover=self.client.discover_rss,
+            max_search_calls=self.config.get("max_search_calls", 2),
+            max_extract_pages=self.config.get("max_extract_pages", 2),
+            max_llm_calls=self.config.get("max_llm_calls", 3),
+            max_candidates=self.config.get("max_candidates", 8),
+            max_content_chars=self.config.get("max_content_chars", 6000),
+            include_domains=domains,
+            search_mode=self.config.get("search_mode", "tavily"),
+        )
+        try:
+            await self.client.start()
+        except BaseException:
+            await self.client.close()
+            raise
+        self.engine = engine
         self.scheduler_task = asyncio.create_task(self.scheduler.loop(), name="xiaod-life-daily")
 
     async def generate(self, prompt, event=None):
@@ -104,7 +125,7 @@ class XiaodLife(Star):
 
     @life.command("explore")
     async def explore(self, event: AstrMessageEvent):
-        """手动探索一次，最多三个真实网页搜索或 RSS 来源。"""
+        """手动探索一次，自主选择模式与最多两篇公开来源进行阅读。"""
         if not self.allowed(event):
             yield event.plain_result("仅 AstrBot 管理员可以使用 life 指令。")
             event.stop_event()

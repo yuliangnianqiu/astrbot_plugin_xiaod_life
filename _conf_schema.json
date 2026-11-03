@@ -20,7 +20,7 @@
     "_special": "select_provider"
   },
   "max_sources": {
-    "description": "单次最大来源数（1-3，硬上限3）",
+    "description": "V0.1/V0.2兼容配置（1-3）；V0.3改用max_candidates候选池，真正阅读始终最多2篇",
     "type": "int",
     "default": 3
   },
@@ -57,5 +57,35 @@
     "description": "每日探索分钟（Asia/Shanghai 北京时间，0-59）",
     "type": "int",
     "default": 0
+  },
+  "max_search_calls": {
+    "description": "每轮 Tavily 搜索请求硬预算（1-2，失败计入，无自动重试）",
+    "type": "int",
+    "default": 2
+  },
+  "max_extract_pages": {
+    "description": "每轮正文提取网页上限（0-2；0只读摘要；失败不追加网页）",
+    "type": "int",
+    "default": 2
+  },
+  "max_llm_calls": {
+    "description": "每轮模型请求硬预算（1-3）；完整探索需3次，低于3将记录预算不足且不会超额调用",
+    "type": "int",
+    "default": 3
+  },
+  "max_candidates": {
+    "description": "候选池数量上限（2-12），多搜索与RSS交错取样",
+    "type": "int",
+    "default": 8
+  },
+  "max_content_chars": {
+    "description": "每页提取正文字符上限（500-12000），默认6000",
+    "type": "int",
+    "default": 6000
+  },
+  "include_domains": {
+    "description": "Tavily平台域名限制，可留空搜索全网；允许 xiaohongshu.com、bilibili.com、zhihu.com。可多选，不影响独立RSS候选",
+    "type": "list",
+    "default": []
   }
 }
