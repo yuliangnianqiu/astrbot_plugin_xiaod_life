@@ -4,7 +4,7 @@
 
 ## 已执行
 
-- `python -m unittest discover -s tests -v`：**34 项测试通过**（另外含 URL 安全 subtests）。
+- `python -m unittest discover -s tests -v`：**41 项测试通过**（另外含 URL 安全 subtests）。
 - `python -m ruff check .`：通过。
 - `python -m ruff format --check .`：通过。
 - `python -m compileall -q .`：通过。
@@ -35,3 +35,9 @@
 6. AstrBot 重载/卸载/进程重启情况下的真实持久化验收。
 
 GitHub Actions 工作流已提供；远端运行结果以仓库实际 Checks 为准，本文件不预先宣称 CI 成功。
+
+## 指令回复顺序回归
+
+对照 v4.29.4 的 `pipeline/scheduler.py`、`process_stage/stage.py` 和 `astr_message_event.py`，修复了在 yield 之前 stop_event 导致后续分段中断、清理延迟的风险。当前所有回应先完成 yield，最后再停止事件。新增七项逐次 yield 状态测试，覆盖拒绝、停用、未就绪、探索多段/异常、摘要多段/异常。它们验证适配器边界，不代替完整 QQ 流水线验收。
+
+另执行独立探针，从 AstrBot v4.29.4 官方原文件提取未改写的 `_process_stages` 与 `call_handler` 函数 AST，运行当前插件真实 explore 生成器（外围模型/事件使用替身）。旧顺序得到 delivered_parts=1、running_tasks=1；修复顺序得到 delivered_parts=3、running_tasks=0，三段全文、立即清理和停止状态断言全部通过。该探针是上游调度函数契约验证，仍不是完整 AstrBot/QQ 实机验收。

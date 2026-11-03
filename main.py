@@ -42,15 +42,17 @@ class XiaodLife(Star):
     @life.command("explore")
     async def explore(self, event: AstrMessageEvent):
         """手动探索一次，最多三个真实 RSS 来源。"""
-        event.stop_event()
         if not self.allowed(event):
             yield event.plain_result("仅 AstrBot 管理员可以使用 life 指令。")
+            event.stop_event()
             return
         if not self.config.get("enabled", True):
             yield event.plain_result("小D 探索插件已停用。")
+            event.stop_event()
             return
         if self.closing or self.engine is None:
             yield event.plain_result("探索插件尚未就绪，请稍后再试。")
+            event.stop_event()
             return
         task = asyncio.current_task()
         self.running.add(task)
@@ -94,16 +96,20 @@ class XiaodLife(Star):
             )
         finally:
             self.running.discard(task)
+            # AstrBot scheduler checks is_stopped immediately after every yield.
+            # Stop only after ALL chunks have passed through RespondStage.
+            event.stop_event()
 
     @life.command("today")
     async def today(self, event: AstrMessageEvent):
         """查看最近的成功探索记录，不调用模型、不联网。"""
-        event.stop_event()
         if not self.allowed(event):
             yield event.plain_result("仅 AstrBot 管理员可以使用 life 指令。")
+            event.stop_event()
             return
         if not self.config.get("enabled", True):
             yield event.plain_result("小D 探索插件已停用。")
+            event.stop_event()
             return
         try:
             logs = await asyncio.to_thread(self.store.read, "activities.json", [])
@@ -112,6 +118,8 @@ class XiaodLife(Star):
         except Exception as exc:
             self.logger.error("Xiaod history read failed (%s)", type(exc).__name__)
             yield event.plain_result("活动记录暂时无法读取，请检查插件日志；不会覆盖已有文件。")
+        finally:
+            event.stop_event()
 
     async def terminate(self):
         self.closing = True

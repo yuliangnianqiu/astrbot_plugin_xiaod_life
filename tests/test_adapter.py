@@ -126,3 +126,62 @@ class AdapterTests(unittest.IsolatedAsyncioTestCase):
         result = [x async for x in self.plugin.today(Event())]
         self.assertIn("没有", "".join(result))
         self.context.llm_generate.assert_not_called()
+
+
+class YieldPropagationTests(unittest.IsolatedAsyncioTestCase):
+    """Check the scheduler's stop guard at every yielded response boundary."""
+
+    asyncSetUp = AdapterTests.asyncSetUp
+    asyncTearDown = AdapterTests.asyncTearDown
+
+    async def collect_deliverable(self, generator, event):
+        delivered = []
+        async for response in generator:
+            self.assertFalse(event.stopped, "scheduler would suppress this yielded reply")
+            delivered.append(response)
+        self.assertTrue(event.stopped, "command should stop propagation only after sending")
+        return delivered
+
+    async def test_denial_deliverable(self):
+        event = Event(False)
+        replies = await self.collect_deliverable(self.plugin.explore(event), event)
+        self.assertIn("管理员", "".join(replies))
+
+    async def test_disabled_deliverable(self):
+        self.plugin.config["enabled"] = False
+        event = Event()
+        replies = await self.collect_deliverable(self.plugin.explore(event), event)
+        self.assertIn("停用", "".join(replies))
+
+    async def test_not_ready_deliverable(self):
+        event = Event()
+        replies = await self.collect_deliverable(self.plugin.explore(event), event)
+        self.assertIn("就绪", "".join(replies))
+
+    async def test_success_all_parts_deliverable(self):
+        message = "\n".join(["a" * 1000, "b" * 1000, "c" * 1000])
+        self.plugin.engine = types.SimpleNamespace(run=AsyncMock(return_value=(None, message)))
+        event = Event()
+        replies = await self.collect_deliverable(self.plugin.explore(event), event)
+        self.assertEqual(len(replies), 3)
+        self.assertEqual("\n".join(replies), message)
+
+    async def test_explore_exception_deliverable(self):
+        self.plugin.engine = types.SimpleNamespace(run=AsyncMock(side_effect=ValueError()))
+        event = Event()
+        replies = await self.collect_deliverable(self.plugin.explore(event), event)
+        self.assertIn("运行错误", "".join(replies))
+
+    async def test_today_all_parts_deliverable(self):
+        message = "\n".join(["a" * 1000, "b" * 1000, "c" * 1000])
+        event = Event()
+        with patch.object(self.module, "format_recent", return_value=message):
+            replies = await self.collect_deliverable(self.plugin.today(event), event)
+        self.assertEqual(len(replies), 3)
+        self.assertEqual("\n".join(replies), message)
+
+    async def test_today_exception_deliverable(self):
+        event = Event()
+        with patch.object(self.plugin.store, "read", side_effect=ValueError()):
+            replies = await self.collect_deliverable(self.plugin.today(event), event)
+        self.assertIn("无法读取", "".join(replies))
