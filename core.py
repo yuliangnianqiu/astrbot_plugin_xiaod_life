@@ -88,7 +88,8 @@ class Store:
 
     def append(self, record):
         logs = self.read("activities.json", [])
-        if len(logs) >= 1000:
+        encoded_size = len(json.dumps(logs, ensure_ascii=False).encode("utf-8"))
+        if len(logs) >= 1000 or encoded_size >= 8 * 1024 * 1024:
             # Archive a full snapshot BEFORE reducing the active file. Snapshots
             # overlap by five records, but no history is silently deleted.
             self.write(f"archive-{uuid4().hex}.json", logs)

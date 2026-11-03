@@ -44,12 +44,12 @@ AstrBot 手动探索插件。让现有角色「小D」根据独立兴趣状态�
 data/plugin_data/astrbot_plugin_xiaod_life/
   interests.json
   activities.json
-  archive-<id>.json  # 活动超过1000条时保留完整归档快照
+  archive-<id>.json  # 活动超过1000条或8 MiB时保留完整归档快照
 ```
 
 活动包含 `id`、`started_at`、`finished_at`、`status`、`topic`、`sources`、`model_findings`、`subjective_evaluation`、`next_direction`、`errors`。`sources` 保留编号、URL、feed URL、标题、实际摘录和抓取时间。失败保留已抓到的内容、错误类型及时间，不删除旧记录，不将失败伪装为成功经历。
 
-采用临时文件 + fsync + 原子替换。JSON 损坏时拒绝继续写入，绝不静默重建。单文件读取上限 16 MiB。达到 1000 条时先保存完整归档快照，再在活动文件保留最后五条并追加新记录；归档之间会重叠五条，可按 `id` 去重。归档不自动删除，应定期备份并由管理员管理磁盘空间。单进程内串行写入，不支持多个 AstrBot 进程同时共用同一个数据目录。
+采用临时文件 + fsync + 原子替换。JSON 损坏时拒绝继续写入，绝不静默重建。单文件读取上限 16 MiB。达到 1000 条或 8 MiB 时先保存完整归档快照，再在活动文件保留最后五条并追加新记录；归档之间会重叠五条，可按 `id` 去重。归档不自动删除，应定期备份并由管理员管理磁盘空间。单进程内串行写入，不支持多个 AstrBot 进程同时共用同一个数据目录。
 
 不读写 LivingMemory 数据库、配置或内部存储；不读取 QQ 聊天记录；不改 Proactive Chat，不调用主动消息 API，不创建后台计时任务、不注入普通聊天提示词。`llm_generate` 不传对话历史或工具，只发送本插件的兴趣、简短近期主题和公开摘录。现有服务提供商仍会收到这些输入；请勿在兴趣文件中写入敏感个人数据。
 
