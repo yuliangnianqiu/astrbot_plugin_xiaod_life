@@ -8,6 +8,7 @@ import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 DEFAULT_FEEDS = [
     "https://www.sciencedaily.com/rss/all.xml",
@@ -520,14 +521,35 @@ def format_record(record):
     )
 
 
-def format_recent(logs):
-    recent = [r for r in logs if r.get("status") == "success"][-3:]
+def format_recent(logs, *, day=None):
+    shanghai = ZoneInfo("Asia/Shanghai")
+    recent = [r for r in logs if r["status"] == "success"]
+    dated = []
+    for record in recent:
+        stamp = record.get("started_at")
+        local = None
+        if stamp is not None:
+            local = datetime.fromisoformat(stamp)
+            if local.tzinfo is None:
+                raise ValueError("activity started_at must include a timezone")
+            local = local.astimezone(shanghai)
+        if day is None or (local is not None and local.date() == day):
+            dated.append((local, record))
+    dated.sort(key=lambda item: item[0] or datetime.min.replace(tzinfo=shanghai))
+    recent = dated if day is not None else dated[-3:]
     if not recent:
+        if day is not None:
+            return f"北京时间 {day} 今天还没有成功的真实探索记录。可用 /life recent 查看近期历史。"
         return "还没有成功的真实探索记录。可以先用 /life explore 探索一次。"
-    lines = ["最近真实探索（UTC 时间，最多 3 条，并非仅限今天）："]
-    for r in recent:
+    lines = [
+        f"今天的真实探索（北京时间 {day}）："
+        if day is not None
+        else "最近真实探索（北京时间，最多 3 条）："
+    ]
+    for local, r in recent:
+        stamp = local.strftime("%Y-%m-%d %H:%M") if local is not None else "时间未知"
         lines.append(
-            f"{r.get('started_at', '时间未知')} · {r.get('topic', '主题未知')}\n个人感想（模型生成）：{r.get('subjective_evaluation', '暂无')}"
+            f"{stamp} · {r.get('topic', '主题未知')}\n个人感想（模型生成）：{r.get('subjective_evaluation', '暂无')}"
         )
         lines.extend(
             s["url"]

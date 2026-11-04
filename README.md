@@ -1,6 +1,8 @@
-# 小D 的探索生活 · V0.3
+# 小D 的探索生活 · V0.4
 
 AstrBot 通用网页搜索与每日自动探索插件。让现有角色「小D」根据独立兴趣状态和近期经历选题，自主决定主动搜索或发现式浏览，从 Tavily 与公开 RSS/Atom 候选中挑选内容，通过 Tavily Extract 阅读公开正文或明确标注摘要降级，写下有依据的发现和主观感想。
+
+V0.4 将真实探索经历接入普通 QQ 私聊。问“今天干嘛啦”“最近有什么发现”，小D会得到相关记录；继续问“在哪看到的”，她可引用原始链接。
 
 ## 安装与使用
 
@@ -9,14 +11,29 @@ AstrBot 通用网页搜索与每日自动探索插件。让现有角色「小D�
 1. 在 AstrBot 插件页使用本仓库地址安装。原仓库地址目前重定向到 `https://github.com/yuliangnianqiu/astrbot_plugin_xiaod_life`，发布时仓库为公开状态；插件不会调整仓库可见性。也可下载后放入 `data/plugins/astrbot_plugin_xiaod_life`。插件不保存 GitHub 凭据。
 2. 安装 `requirements.txt` 中依赖，重载插件。
 3. 在插件配置中设置 `tavily_api_key`（在 https://app.tavily.com 获取），选择已有模型的 `provider_id`。自动探索必须配置该 ID；只有手动探索可留空使用当前会话模型。插件不创建模型、不读取模型密钥、不更改模型配置。首次配置时可先关闭 `auto_enabled`，配置完成后再开启并重载。
-4. 使用 AstrBot 管理员账号发送 `/life explore`。完成后得到发现、主观评价及原始来源链接。
-5. 使用 `/life today` 查看最近三次成功探索。该命令不联网、不调用模型。这里的 today 是近期活动入口，**并非只显示当天**，时间统一为 UTC。
+4. 使用 AstrBot 管理员账号在 QQ 私聊发送 `/life explore`。完成后得到发现、主观评价及原始来源链接。
+5. 使用 `/life today` 查看北京时间今天全部成功探索，`/life recent` 查看最近三次成功探索。两个查询指令均在本地读取记录。
+6. 在同一私聊直接问“今天干嘛啦”，再问“在哪看到的？”，核对回答的主题、日期和链接。
 
-默认 `admin_only=true`，防止群成员随意消耗模型额度或读取角色经历。若主动关闭，所有会话共享一份小D活动记录。需要在 AstrBot 本体中正确配置管理员账号。普通 QQ 私聊/群聊是否允许命令触发仍受本体唤醒与平台配置控制。
+默认记录访问范围是 AstrBot 管理员的 QQ 私聊。`recall_sessions` 可进一步限定到精确会话，格式为 `平台实例ID:FriendMessage:QQ号`，例如 `qq-main:FriendMessage:123456789`；平台实例 ID 请从 AstrBot 会话管理中复制实际 UMO。填写列表后，仅列表内 QQ 私聊获得记录访问权限。`admin_only=true` 为 life 指令额外要求管理员身份；设为 false 后，指令仍沿用上述私聊范围。普通聊天召回与指令均隔离群聊和其他平台。本插件使用一份小D生活日志，授权列表内的私聊共享这些经历。
+
+## V0.4 日常聊天召回
+
+- 默认 `recall_enabled=true`。通过 `on_llm_request` 向 `req.extra_user_content_parts` 追加一个 `TextPart(...).mark_as_temp()`，只供当前请求使用。原有人设、用户输入、历史和其他插件内容保持原样。
+- 用当前消息中的生活问句、来源追问或主题片段匹配，在 `activities.json` 中选最近七天的成功记录，按时间取最近 1–3 条。今天、昨天按北京时间明确筛选；其余主题匹配采用标题分段精确包含规则。初版覆盖固定生活问句和主题片段，同义表达可在后续使用反馈中补充。
+- 来源追问会使用**当前请求**最近四条上下文的末尾最多 4000 字符匹配主题，帮助延续刚聊过的经历。这里只做本地匹配，生活资料的内容仍来自成功日志。
+- 每次上下文最多 6000 字符，每条最多两个来源；JSON 记录整体装入预算，链接保持完整。只附日期、主题、有对应来源的简短模型归纳、阅读概括、主观感想与逐来源阅读深度。正文和候选池留在日志中。
+- 召回在本地执行，沿用当前聊天原本的模型请求，额外开销是有界的输入上下文。失败、跳过、取消及进行中的探索均与成功经历分开；当天记录为空时提供明确的空记录说明。
+- V0.1–V0.3 已发布日志结构继续使用。旧来源缺少 `read_level` 时按摘要处理；JSON 损坏或异常时间戳会抛出错误，由 AstrBot 钩子错误日志报告，文件保留原状。临时资料的保存语义以 AstrBot 官方接口为准，生成的正常聊天回复照常进入原有会话。
+- `recall_enabled=false` 单独关闭普通聊天召回，life 查询及自动探索仍按各自开关工作。配置修改后重载插件。
+
+官方依据：[模型请求钩子](https://github.com/AstrBotDevs/AstrBot/wiki/en-dev-star-guides-listen-message-event)、[v4.29.4 ProviderRequest](https://github.com/AstrBotDevs/AstrBot/blob/v4.29.4/astrbot/core/provider/entities.py)、[临时内容与历史序列化](https://github.com/AstrBotDevs/AstrBot/blob/v4.29.4/astrbot/core/agent/message.py)。钩子沿用默认优先级 0，并只追加本插件的一段内容；同优先级处理顺序由 AstrBot 注册顺序确定。与 LivingMemory、Proactive Chat 的实际共存行为通过下方 QQ 验收检查。
 
 ## 配置
 
-- `enabled`：启用指令和自动探索，默认 true。
+- `enabled`：启用指令、自动探索及普通聊天召回，默认 true。
+- `recall_enabled`：普通聊天召回开关，默认 true。
+- `recall_sessions`：记录访问的 QQ 私聊精确 UMO 列表，默认空，采用管理员私聊范围。
 - `search_mode`：默认 `tavily`，通用网页搜索；设为 `rss` 使用原 RSS 模式，不自动回退。
 - `tavily_api_key`：Tavily 密钥，仅发送到固定的 `https://api.tavily.com/search` 与 `https://api.tavily.com/extract`。请保护 AstrBot 插件配置及备份，不将密钥提交到 GitHub。
 - `auto_enabled`：每日自动探索开关，默认 true。后台只保存结果和错误，不发送 QQ 消息。
@@ -76,7 +93,7 @@ V0.3 新增 `schema_version=3`、`exploration_mode`、`candidates`、`selection_
 
 采用临时文件 + fsync + 原子替换。JSON 损坏时拒绝继续写入，绝不静默重建。单文件读取上限 16 MiB。达到 1000 条或 8 MiB 时先保存完整归档快照，再在活动文件保留最后五条并追加新记录；归档之间会重叠五条，可按 `id` 去重。归档不自动删除，应定期备份并由管理员管理磁盘空间。单进程内串行写入，不支持多个 AstrBot 进程同时共用同一个数据目录。
 
-不读写 LivingMemory 数据库、配置或内部存储；不读取 QQ 聊天记录；不改 Proactive Chat，不调用主动消息 API，仅创建本插件每日探索任务，不注入普通聊天提示词。`llm_generate` 不传对话历史或工具，只发送本插件的兴趣、简短近期主题和公开候选/阅读材料。现有服务提供商仍会收到这些输入；请勿在兴趣文件中写入敏感个人数据。
+LivingMemory 与 Proactive Chat 继续管理各自的数据和行为。V0.4 只读取本插件活动文件，并在授权的普通聊天请求中追加临时资料；来源追问可利用 AstrBot 已传入的当前会话上下文匹配主题。探索调用 `llm_generate` 仍使用空对话历史和 `tools=None`，输入为本插件兴趣、近期主题及公开阅读材料。聊天模型服务会收到被召回的精简经历。
 
 ## 限制与防护
 
@@ -112,7 +129,7 @@ python -m ruff format --check .
 - 安装、依赖解析、插件配置显示、重载与卸载。
 - 绑定 DeepSeek ID 后执行三阶段官方模型调用，验证规划、候选选择和阅读 JSON 格式。
 - 使用真实 Tavily Key 验证检索及账户额度（本轮未调用付费 API）；RSS 模式在部署网络检查三个 RSS 地址是否允许访问；网络策略、地区限制、源重定向或限流都可能导致失败。必要时换成可访问的 HTTPS RSS。
-- QQ 私聊及群内管理员/非管理员权限、指令前缀、消息分段和 URL 风控。
+- QQ 管理员私聊、精确会话白名单、非授权用户及群聊的隔离、指令前缀、消息分段和 URL 风控。
 - 执行 explore → today → 重载 → today，确认真实历史持久化。
 - 设置临近的北京时间，在无 QQ 消息情况下观察后台活动、同日重载不重复、关闭开关后无调用；实际模型响应和 API 额度仍需服务器验收。
 - 并发指令、模型超时、断网、不可写目录和取消卸载，不丢旧日志。
@@ -131,9 +148,17 @@ python -m ruff format --check .
 
 指定的 `https://github.com/AstrBotDevs/helloworld` 返回 404。通过目标仓库的模板来源确认实际模板为 [Soulter/helloworld](https://github.com/Soulter/helloworld)，已读取其入口与元数据，并保留原有 LICENSE、.gitignore。入口与生命周期最终以 v4.29.4 官方源码为准，未沿用模板已废弃的 register 装饰器。
 
-本次 V0.3 修改日期为 2026-11-03。沿用仓库现有 AGPL-3.0 许可证，见 LICENSE。
+本次 V0.4 修改日期为 2026-11-04。沿用仓库现有 AGPL-3.0 许可证，见 LICENSE。
 
-V0.3 不包含兴趣自动演化、视频理解、普通聊天记忆注入或主动分享。针对 2 CPU / 2 GB 使用单任务、无浏览器/本地模型、有限响应体设计；未在该规格真实服务器做性能压测。
+兴趣演化、连续探索策略及多模态能力留待后续版本。当前使用单任务、远程 API 和有限响应体设计；2 CPU / 2 GB 服务器的性能结果以实际部署为准。
+
+### V0.4 升级与 QQ 验收（5 步）
+
+1. 备份 `data/plugin_data/astrbot_plugin_xiaod_life/`，在插件管理中更新并重载，确认版本 `0.4.0`，AstrBot 为 `>=4.29.4,<5`。首次升级可先关闭 `auto_enabled`，保留现有提供商和 Tavily 配置。`recall_enabled` 默认 true，`recall_sessions` 留空时采用管理员 QQ 私聊范围。
+2. 管理员在 QQ 私聊执行 `/life explore`，再分别查看 `/life today`、`/life recent`，确认主题、链接及北京时间。当天暂未成功探索时，today 显示空记录提示，recent 可查看旧记录。
+3. 普通聊天问“今天干嘛啦”“你对【记录中的主题】有什么感想”，再问“在哪看到的？发一下链接”。核对真实主题、日期、来源及摘要/正文深度；听歌或线下体验的叙述以真实能力和记录为依据。
+4. 用另一位非管理员私聊及群聊提问、调用 life 指令，核对记录隔离。设置精确 `recall_sessions` 后重载，验证列表内外会话边界；关闭 `recall_enabled` 时普通聊天继续按原有配置运行。
+5. 重载后重复普通聊天与历史查询，并与 LivingMemory、Proactive Chat 一起启用，检查普通聊天、关系记忆与主动消息。随后恢复所需自动探索设置。这五步属于用户实际 QQ 环境验收，本轮已完成的是离线自动化验证。
 
 ### V0.3 部署验收清单
 

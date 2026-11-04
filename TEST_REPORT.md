@@ -1,4 +1,40 @@
-# V0.3 测试报告
+# V0.4 测试报告
+
+执行日期：2026-11-04。基线 `da03067`（V0.3），本地 Python 3.13.9 / Windows。外部模型、搜索与 QQ 在自动化测试中使用离线替身。
+
+## V0.4 执行结果
+
+- `python -m unittest discover -s tests -q`：137 项通过，含原有 112 项和新增 25 项。
+- `python -m ruff check .`：通过。
+- `python -m ruff format --check .`：18 个 Python 文件通过。
+- `python -m compileall -q .`、配置 JSON 解析及 `git diff --check`：通过。
+- 另从官方 v4.29.4 tag 读取 `astrbot/core/agent/message.py`，在本地加载真实 `TextPart` / `Message`，核验 `mark_as_temp()` 的 `_no_save` 标记及 `dump_messages_with_checkpoints()` 对临时资料的过滤：通过。该检查使用官方源文件与本地 Pydantic，独立于适配器替身测试。
+
+## 新增覆盖
+
+1. 今天、昨天按北京时间筛选，覆盖 UTC 16:00 跨日边界；七天窗口、未来时间和失败/跳过/取消/进行中记录过滤。
+2. 常用生活问句、主题片段及来源追问召回；追问使用当前请求上下文匹配相关主题；无关聊天保持请求原状。
+3. 原始 URL、逐来源阅读深度与主观评价保留；正文和候选池留在日志中；V0.1/V0.2 来源按摘要处理。
+4. 最近三条按时间排序、6000 字符硬预算、长链接完整、JSON 记录完整、发现引用与附带来源一致，读取前后日志一致。
+5. QQ 管理员私聊默认范围、白名单精确会话匹配、平台实例及用户隔离、群聊和其他平台隔离；生活指令与普通聊天采用同一记录访问范围。
+6. 关闭开关、卸载中和 life 指令跳过召回；原有请求字段及其他插件资料保留；相同请求重复钩子调用只追加一段临时内容。
+7. JSON 损坏及无时区/非法时间戳直接报告错误、文件保留；查询时间与重载后旧历史读取；查询消息分段在发送完成后终止事件。
+
+## 接口与真实环境验收
+
+接口按 AstrBot v4.29.4 核验：`ProviderRequest.extra_user_content_parts`、`TextPart.mark_as_temp()`、`on_llm_request`、`AstrMessageEvent.is_private_chat()`、`get_platform_name()` 与精确 `unified_msg_origin`。钩子默认优先级为 0，框架按优先级从高到低执行；本插件只追加一段临时资料。调用钩子时的异常交由 AstrBot 官方错误日志报告。
+
+- [ProviderRequest](https://github.com/AstrBotDevs/AstrBot/blob/v4.29.4/astrbot/core/provider/entities.py)
+- [临时内容与序列化](https://github.com/AstrBotDevs/AstrBot/blob/v4.29.4/astrbot/core/agent/message.py)
+- [事件注册](https://github.com/AstrBotDevs/AstrBot/blob/v4.29.4/astrbot/core/star/register/star_handler.py)
+- [钩子排序](https://github.com/AstrBotDevs/AstrBot/blob/v4.29.4/astrbot/core/star/star_handler.py)
+- [事件调用与错误日志](https://github.com/AstrBotDevs/AstrBot/blob/v4.29.4/astrbot/core/pipeline/context_utils.py)
+
+本轮执行范围为本地逻辑、接口契约及官方序列化验证。服务器实际版本、DeepSeek 回答、QQ 链接显示与 LivingMemory / Proactive Chat 共存需按 README 的 V0.4 五步清单在用户部署环境验收。GitHub Actions 使用仓库既有的 Python 3.12 / 3.13 矩阵执行上述测试与静态检查，结果可在提交对应的 Actions 中查看。
+
+---
+
+# V0.3 历史测试报告
 
 执行日期：2026-11-03。基线 V0.2 commit `ecfcf61`。Python 3.12，测试依赖隔离安装到临时目录。未使用用户 API Key，未调用真实 Tavily / DeepSeek / QQ 服务，未宣称完成真实部署验收。
 

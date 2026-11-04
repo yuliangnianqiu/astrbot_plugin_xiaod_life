@@ -1,13 +1,18 @@
-"""AstrBot V0.3 adapter. Never accesses other plugins' storage or sends proactive chat."""
+"""AstrBot V0.4 adapter: exploration and private, temporary activity recall."""
 
 import asyncio
+import json
+from datetime import datetime
 
 from astrbot.api import AstrBotConfig
 from astrbot.api.event import AstrMessageEvent, filter
+from astrbot.api.provider import ProviderRequest
 from astrbot.api.star import Context, Star, StarTools
+from astrbot.core.agent.message import TextPart
 
 from .core import DEFAULT_FEEDS, Explorer, Store, format_recent, format_record, message_chunks
 from .network import public_url
+from .recall import CONTEXT_PREFIX, SHANGHAI, SOURCE_QUESTION, recall_context
 from .scheduler import DailyScheduler
 from .search import SearchClient, validated_domains
 
@@ -27,6 +32,11 @@ class XiaodLife(Star):
         self.lifecycle_lock = asyncio.Lock()
         self.scheduler = None
         self.scheduler_task = None
+        self.recall_sessions = config.get("recall_sessions", [])
+        if not isinstance(self.recall_sessions, list) or any(
+            not isinstance(s, str) or not s.strip() for s in self.recall_sessions
+        ):
+            raise ValueError("recall_sessions must be a list of exact session origins")
 
     async def initialize(self):
         async with self.lifecycle_lock:
@@ -117,7 +127,42 @@ class XiaodLife(Star):
             return None, "后台存储或运行错误；已有文件保留。"
 
     def allowed(self, event):
-        return not self.config.get("admin_only", True) or event.is_admin()
+        return self.recall_allowed(event) and (
+            not self.config.get("admin_only", True) or event.is_admin()
+        )
+
+    def recall_allowed(self, event: AstrMessageEvent) -> bool:
+        if event.get_platform_name() != "aiocqhttp" or not event.is_private_chat():
+            return False
+        if self.recall_sessions:
+            return event.unified_msg_origin in self.recall_sessions
+        return event.is_admin()
+
+    @filter.on_llm_request()
+    async def inject_life_context(self, event: AstrMessageEvent, req: ProviderRequest):
+        """Append one temporary part; preserve all other plugins' request content."""
+        if (
+            self.closing
+            or not self.config.get("enabled", True)
+            or not self.config.get("recall_enabled", True)
+            or not self.recall_allowed(event)
+            or event.message_str.lstrip().startswith(("/life", "life "))
+        ):
+            return
+        if any(
+            isinstance(part, TextPart) and part.text.startswith(CONTEXT_PREFIX)
+            for part in req.extra_user_content_parts
+        ):
+            return
+        logs = await asyncio.to_thread(self.store.read, "activities.json", [])
+        followup = ""
+        if SOURCE_QUESTION.search(event.message_str):
+            followup = json.dumps(req.contexts[-4:], ensure_ascii=False)[-4000:]
+        text = recall_context(
+            logs, event.message_str, datetime.now(SHANGHAI), followup_text=followup
+        )
+        if text:
+            req.extra_user_content_parts.append(TextPart(text=text).mark_as_temp())
 
     @filter.command_group("life")
     def life(self):
@@ -127,7 +172,9 @@ class XiaodLife(Star):
     async def explore(self, event: AstrMessageEvent):
         """手动探索一次，自主选择模式与最多两篇公开来源进行阅读。"""
         if not self.allowed(event):
-            yield event.plain_result("仅 AstrBot 管理员可以使用 life 指令。")
+            yield event.plain_result(
+                "life 指令限已授权 QQ 私聊使用；请核对管理员与 recall_sessions 配置。"
+            )
             event.stop_event()
             return
         if not self.config.get("enabled", True):
@@ -168,9 +215,21 @@ class XiaodLife(Star):
 
     @life.command("today")
     async def today(self, event: AstrMessageEvent):
-        """查看最近的成功探索记录，不调用模型、不联网。"""
+        """查看北京时间今天的成功探索记录。"""
+        async for result in self.history(event, today=True):
+            yield result
+
+    @life.command("recent")
+    async def recent(self, event: AstrMessageEvent):
+        """查看最近三次成功探索记录（北京时间）。"""
+        async for result in self.history(event, today=False):
+            yield result
+
+    async def history(self, event: AstrMessageEvent, *, today: bool):
         if not self.allowed(event):
-            yield event.plain_result("仅 AstrBot 管理员可以使用 life 指令。")
+            yield event.plain_result(
+                "life 指令限已授权 QQ 私聊使用；请核对管理员与 recall_sessions 配置。"
+            )
             event.stop_event()
             return
         if not self.config.get("enabled", True):
@@ -179,7 +238,8 @@ class XiaodLife(Star):
             return
         try:
             logs = await asyncio.to_thread(self.store.read, "activities.json", [])
-            for part in message_chunks(format_recent(logs)):
+            day = datetime.now(SHANGHAI).date() if today else None
+            for part in message_chunks(format_recent(logs, day=day)):
                 yield event.plain_result(part)
         except Exception as exc:
             self.logger.error("Xiaod history read failed (%s)", type(exc).__name__)

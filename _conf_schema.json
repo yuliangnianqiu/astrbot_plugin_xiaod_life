@@ -25,9 +25,19 @@
     "default": 3
   },
   "admin_only": {
-    "description": "仅允许 AstrBot 管理员使用指令（推荐；关闭后所有用户共享小D日志）",
+    "description": "life 指令额外要求管理员身份；关闭时仍受 QQ 私聊及 recall_sessions 范围约束",
     "type": "bool",
     "default": true
+  },
+  "recall_enabled": {
+    "description": "普通 QQ 私聊按需召回真实探索经历；每轮临时注入最多3条，无额外模型或网络请求",
+    "type": "bool",
+    "default": true
+  },
+  "recall_sessions": {
+    "description": "允许访问生活记录的 QQ 私聊精确会话 UMO 列表，格式 平台实例ID:FriendMessage:QQ号；空列表仅允许 QQ 管理员私聊。填写后仅列表内会话可召回或使用 life 指令；群聊始终隔离。修改后重载插件",
+    "type": "list",
+    "default": []
   },
   "search_mode": {
     "description": "搜索方式：tavily 通用网页搜索；rss 保留 V0.1 RSS 模式（不自动回退）",
