@@ -1,7 +1,7 @@
 name: astrbot_plugin_xiaod_life
 display_name: 小D 的探索生活
-desc: 每日自主探索与公开网页阅读，普通QQ私聊按需回忆真实经历、感想和来源。
-version: "0.4.0"
+desc: 每日自主探索、基于成功阅读反馈的兴趣演化，QQ私聊召回真实经历与兴趣依据。
+version: "0.5.0"
 author: npu2023300480dbl
 repo: https://github.com/yuliangnianqiu/astrbot_plugin_xiaod_life
 astrbot_version: ">=4.29.4,<5"

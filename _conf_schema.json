@@ -1,6 +1,6 @@
 {
   "enabled": {
-    "description": "启用小D探索与活动指令",
+    "description": "启用小D探索、兴趣演化与活动指令",
     "type": "bool",
     "default": true
   },
@@ -30,7 +30,7 @@
     "default": true
   },
   "recall_enabled": {
-    "description": "普通 QQ 私聊按需召回真实探索经历；每轮临时注入最多3条，无额外模型或网络请求",
+    "description": "普通 QQ 私聊按需召回真实探索经历、当前兴趣权重及形成依据；探索经历最多3条，兴趣资料有长度上限，沿用当前聊天模型请求",
     "type": "bool",
     "default": true
   },

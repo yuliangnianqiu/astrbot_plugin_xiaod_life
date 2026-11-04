@@ -1,4 +1,4 @@
-"""AstrBot V0.4 adapter: exploration and private, temporary activity recall."""
+"""AstrBot V0.5 adapter: exploration, evolving interests and private recall."""
 
 import asyncio
 import json
@@ -10,7 +10,16 @@ from astrbot.api.provider import ProviderRequest
 from astrbot.api.star import Context, Star, StarTools
 from astrbot.core.agent.message import TextPart
 
-from .core import DEFAULT_FEEDS, Explorer, Store, format_recent, format_record, message_chunks
+from .core import (
+    DEFAULT_FEEDS,
+    Explorer,
+    Store,
+    durable_io,
+    format_recent,
+    format_record,
+    message_chunks,
+)
+from .interests import INTEREST_PREFIX, interest_context
 from .network import public_url
 from .recall import CONTEXT_PREFIX, SHANGHAI, SOURCE_QUESTION, recall_context
 from .scheduler import DailyScheduler
@@ -82,6 +91,7 @@ class XiaodLife(Star):
             include_domains=domains,
             search_mode=self.config.get("search_mode", "tavily"),
         )
+        await durable_io(self.store.load)
         try:
             await self.client.start()
         except BaseException:
@@ -150,17 +160,19 @@ class XiaodLife(Star):
         ):
             return
         if any(
-            isinstance(part, TextPart) and part.text.startswith(CONTEXT_PREFIX)
+            isinstance(part, TextPart) and part.text.startswith((CONTEXT_PREFIX, INTEREST_PREFIX))
             for part in req.extra_user_content_parts
         ):
             return
-        logs = await asyncio.to_thread(self.store.read, "activities.json", [])
+        state, logs = await durable_io(self.store.load)
         followup = ""
         if SOURCE_QUESTION.search(event.message_str):
             followup = json.dumps(req.contexts[-4:], ensure_ascii=False)[-4000:]
         text = recall_context(
             logs, event.message_str, datetime.now(SHANGHAI), followup_text=followup
         )
+        preferences = interest_context(state, event.message_str)
+        text = "\n".join(part for part in (text, preferences) if part)
         if text:
             req.extra_user_content_parts.append(TextPart(text=text).mark_as_temp())
 
@@ -237,7 +249,7 @@ class XiaodLife(Star):
             event.stop_event()
             return
         try:
-            logs = await asyncio.to_thread(self.store.read, "activities.json", [])
+            _, logs = await durable_io(self.store.load)
             day = datetime.now(SHANGHAI).date() if today else None
             for part in message_chunks(format_recent(logs, day=day)):
                 yield event.plain_result(part)
