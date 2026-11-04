@@ -26,7 +26,23 @@ def load_adapter(directory):
 
         return decorate
 
-    event.filter = types.SimpleNamespace(command_group=group)
+    event.filter = types.SimpleNamespace(
+        command_group=group, on_llm_request=lambda: lambda handler: handler
+    )
+    provider = types.ModuleType("astrbot.api.provider")
+    provider.ProviderRequest = object
+    message = types.ModuleType("astrbot.core.agent.message")
+
+    class TextPart:
+        def __init__(self, *, text):
+            self.text = text
+            self.temporary = False
+
+        def mark_as_temp(self):
+            self.temporary = True
+            return self
+
+    message.TextPart = TextPart
     star = types.ModuleType("astrbot.api.star")
 
     class Star:
@@ -43,6 +59,8 @@ def load_adapter(directory):
         "astrbot.api": api,
         "astrbot.api.event": event,
         "astrbot.api.star": star,
+        "astrbot.api.provider": provider,
+        "astrbot.core.agent.message": message,
         "_xiaod_review": package,
     }
     with patch.dict(sys.modules, modules):
@@ -54,6 +72,13 @@ def load_adapter(directory):
 
 class Event:
     unified_msg_origin = "qq-platform:FriendMessage:123"
+    message_str = "今天干嘛啦"
+
+    def get_platform_name(self):
+        return "aiocqhttp"
+
+    def is_private_chat(self):
+        return True
 
     def __init__(self, admin=True):
         self.admin = admin
