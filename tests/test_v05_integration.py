@@ -56,6 +56,10 @@ class ExplorationInterestTests(unittest.IsolatedAsyncioTestCase):
         data = json.loads(prompt.splitlines()[-1])
         self.assertEqual(data["interest_weights"]["音乐"], 3.25)
         self.assertEqual(data["interest_weights"]["自然"], 3)
+        self.assertEqual(data["interest_profile"][0]["positive_count"], 1)
+        self.assertEqual(
+            data["interest_profile"][0]["last_explored_at"], "2026-11-04T02:01:00+00:00"
+        )
         self.assertIn("陌生领域", prompt)
 
     async def test_pending_domain_and_count_enter_planning(self):
@@ -68,6 +72,7 @@ class ExplorationInterestTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(data["pending_interests"], {"电子音乐": 1})
         self.assertEqual(self.store.load()[0]["weights"]["电子音乐"], 3)
         self.assertEqual(result["interest_feedback"]["domain"], "电子音乐")
+        self.assertEqual(self.llm.await_count, 3)
 
     async def test_invalid_multi_feedback_fails_without_updating_interests(self):
         self.store.append(record("baseline"))
