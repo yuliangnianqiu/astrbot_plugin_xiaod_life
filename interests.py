@@ -5,11 +5,17 @@ import json
 import math
 import re
 import unicodedata
+from datetime import datetime, timezone
 
 SCORES = {"positive": 1, "neutral": 0, "negative": -1}
-INTEREST_QUESTION = re.compile(r"兴趣|爱好|喜欢|偏好|感兴趣|权重|为什么爱|怎么爱上")
+INTEREST_QUESTION = re.compile(
+    r"兴趣|爱好|喜欢|偏好|感兴趣|权重|为什么爱|怎么爱上"
+    r"|你.{0,8}(?:总|一直|老).{0,8}(?:研究|探索|看|读|听)"
+)
+NEW_INTEREST_QUESTION = re.compile(r"新.{0,3}(?:兴趣|爱好)|刚.{0,3}(?:喜欢|爱上)")
 INTEREST_PREFIX = "[小D当前兴趣]"
 MAX_INTEREST_CONTEXT = 6000
+MAX_MAIN_INTERESTS = 12
 
 
 def name_key(name: str) -> str:
@@ -158,11 +164,90 @@ def apply_feedback(state: dict, record: dict) -> None:
     }
 
 
+def interest_profile(state: dict) -> dict:
+    """Derive counts and timestamps from the idempotent ledger without changing saved data."""
+    profiles = {
+        name: {
+            "name": name,
+            "weight": state["weights"][name] if name in state["weights"] else None,
+            "positive_count": 0,
+            "neutral_count": 0,
+            "negative_count": 0,
+            "last_explored_at": None,
+            "formed_at": None,
+        }
+        for name in state["interests"] + list(state["pending_interests"])
+    }
+    for event in state["feedback_events"].values():
+        profile = profiles[event["domain"]]
+        profile[event["sentiment"] + "_count"] += 1
+        previous = profile["last_explored_at"]
+        stamp = datetime.fromisoformat(event["time"])
+        if stamp.tzinfo is None:
+            raise ValueError("feedback time must include a timezone")
+        if previous is None or stamp > datetime.fromisoformat(previous):
+            profile["last_explored_at"] = event["time"]
+        if event["formed"]:
+            profile["formed_at"] = event["time"]
+    return profiles
+
+
+def profile_time(profile: dict, field: str) -> datetime:
+    value = profile[field]
+    return (
+        datetime.fromisoformat(value)
+        if value is not None
+        else datetime.min.replace(tzinfo=timezone.utc)
+    )
+
+
+def main_interests(state: dict, profiles: dict) -> list[str]:
+    """Keep a bounded primary view while retaining the complete long-term archive."""
+    return sorted(
+        state["interests"],
+        key=lambda name: (
+            profiles[name]["weight"],
+            profiles[name]["positive_count"] - profiles[name]["negative_count"],
+            profile_time(profiles[name], "last_explored_at"),
+        ),
+        reverse=True,
+    )[:MAX_MAIN_INTERESTS]
+
+
 def planning_interests(state: dict) -> dict:
+    profiles = interest_profile(state)
+    main = main_interests(state, profiles)
+    formed = sorted(
+        (profiles[n] for n in state["interests"] if profiles[n]["formed_at"] is not None),
+        key=lambda p: profile_time(p, "formed_at"),
+        reverse=True,
+    )[:3]
+    pending = sorted(
+        state["pending_interests"],
+        key=lambda n: (
+            len(state["pending_interests"][n]),
+            profile_time(profiles[n], "last_explored_at"),
+        ),
+        reverse=True,
+    )[:MAX_MAIN_INTERESTS]
     return {
-        "interests": state["interests"],
-        "interest_weights": state["weights"],
-        "pending_interests": {n: len(ids) for n, ids in state["pending_interests"].items()},
+        "interests": main,
+        "interest_weights": {n: state["weights"][n] for n in main},
+        "interest_profile": [profiles[n] for n in main],
+        "recently_formed_interests": formed,
+        "pending_interests": {n: len(state["pending_interests"][n]) for n in pending},
+    }
+
+
+def feedback_summary(event: dict) -> dict:
+    return {
+        "activity_id": event["activity_id"],
+        "time": event["time"],
+        "sentiment": event["sentiment"],
+        "reason": event["reason"][:180],
+        "source": {"title": event["source"]["title"][:80], "url": event["source"]["url"]},
+        "weight_before": event["weight_before"],
+        "weight_after": event["weight_after"],
     }
 
 
@@ -177,19 +262,42 @@ def interest_context(state: dict, text: str) -> str:
         "个人偏好和理由是模型基于阅读材料形成的主观评价。"
         "请按原有语气自然回答，并按需要说明证据和原链接。\n"
     )
+    profiles = interest_profile(state)
+    main = main_interests(state, profiles)
     names = state["interests"] + list(state["pending_interests"])
     matching = [n for n in names if name_key(n).removesuffix("文化") in name_key(text)]
-    selected = matching if matching else names
+    if matching:
+        selected = sorted(matching, key=lambda n: len(name_key(n)), reverse=True)
+    elif NEW_INTEREST_QUESTION.search(text):
+        selected = sorted(
+            (n for n in state["interests"] if profiles[n]["formed_at"] is not None),
+            key=lambda n: profile_time(profiles[n], "formed_at"),
+            reverse=True,
+        )[:3]
+        if not selected:
+            header += "当前探索记录尚未形成新的长期兴趣。\n"
+    else:
+        selected = main
+    overview_names = selected[:MAX_MAIN_INTERESTS]
+    overview = {
+        "interest_overview": [
+            dict(profiles[n], is_main_interest=n in main) for n in overview_names
+        ],
+        "main_interest_count": len(main),
+        "retained_interest_count": len(state["interests"]) - len(main),
+    }
+    header += json.dumps(overview, ensure_ascii=False) + "\n"
     parts = []
     for name in selected:
         long_term = name in state["weights"]
         ids = state["formation"][name] if long_term else state["pending_interests"][name]
-        evidence = [state["feedback_events"][i] for i in ids]
+        evidence = [feedback_summary(state["feedback_events"][i]) for i in ids]
         latest = [e for e in state["feedback_events"].values() if e["domain"] == name][-1:]
         # A formation event is already shown in the formation evidence.
         latest = [e for e in latest if e["activity_id"] not in ids]
         data = {
-            "name": name,
+            **profiles[name],
+            "is_main_interest": name in main,
             "long_term": long_term,
             "weight": state["weights"][name] if long_term else None,
             "formation_basis": "两次有效正向探索"
@@ -197,7 +305,7 @@ def interest_context(state: dict, text: str) -> str:
             else ("初始或用户配置兴趣" if long_term else "候选兴趣"),
             "evidence_count": len(ids),
             "formation_evidence": evidence,
-            "latest_feedback": latest,
+            "latest_feedback": [feedback_summary(e) for e in latest],
         }
         part = json.dumps(data, ensure_ascii=False)
         if len(header) + sum(len(p) + 1 for p in parts) + len(part) > MAX_INTEREST_CONTEXT:
